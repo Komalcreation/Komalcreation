@@ -271,7 +271,12 @@ export function updateLanguageDOM() {
   // Update elements with translations
   const elements = document.querySelectorAll('[data-en][data-pa]');
   elements.forEach(el => {
-    const val = el.getAttribute(`data-${currentLang}`) || '';
+    let val = el.getAttribute(`data-${currentLang}`) || '';
+    // Unescape HTML entities so browser can parse them as DOM nodes in innerHTML
+    val = val.replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&amp;/g, '&');
+
     if (val.includes('<') && val.includes('>')) {
       el.innerHTML = val;
     } else {
