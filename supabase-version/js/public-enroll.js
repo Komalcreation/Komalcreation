@@ -148,11 +148,28 @@ async function handleEnrollmentSubmit(e) {
         studentPayload.auth_user_id = authUser.id;
       }
 
-      const { data: insertedStudent, error: studentError } = await supabase
+      let insertRes = await supabase
         .from('students')
         .insert([studentPayload])
-        .select()
-        .single();
+        .select();
+
+      // Handle PostgreSQL undefined_column code ('42703') or keyword-based errors
+      if (insertRes.error && (insertRes.error.code === '42703' || insertRes.error.message.includes('column'))) {
+        console.warn("Initial student insert failed due to column incompatibilities. Retrying with essential columns...", insertRes.error.message);
+        const essentialPayload = {
+          full_name: name,
+          phone: phone,
+          email: email,
+          address: address
+        };
+        insertRes = await supabase
+          .from('students')
+          .insert([essentialPayload])
+          .select();
+      }
+
+      const insertedStudent = (insertRes.data && insertRes.data.length > 0) ? insertRes.data[0] : null;
+      let studentError = insertRes.error;
 
       if (studentError) {
         console.error("Inserting new student row failed:", studentError);
@@ -166,8 +183,19 @@ async function handleEnrollmentSubmit(e) {
         } else {
           throw studentError;
         }
-      } else {
+      } else if (insertedStudent) {
         student = insertedStudent;
+      } else {
+        // Fallback trace if no error but also no direct record returned
+        const { data: retryList } = await supabase
+          .from('students')
+          .select('*')
+          .eq('email', email);
+        if (retryList && retryList.length > 0) {
+          student = retryList[0];
+        } else {
+          throw new Error("Could not retrieve inserted student record.");
+        }
       }
     } else {
       // If student existed, update their details with the newly submitted values and link user ID if newly grabbed
@@ -180,14 +208,29 @@ async function handleEnrollmentSubmit(e) {
         updatePayload.auth_user_id = authUser.id;
       }
       
-      const { data: updatedData, error: updateErr } = await supabase
+      let updateRes = await supabase
         .from('students')
         .update(updatePayload)
         .eq('id', student.id)
         .select();
+
+      // Safe update retry fallback for column incompatibilities
+      if (updateRes.error && (updateRes.error.code === '42703' || updateRes.error.message.includes('column'))) {
+        console.warn("Student update failed due to column incompatibilities. Retrying with essential columns...", updateRes.error.message);
+        const essentialPayload = {
+          full_name: name,
+          phone: phone,
+          address: address
+        };
+        updateRes = await supabase
+          .from('students')
+          .update(essentialPayload)
+          .eq('id', student.id)
+          .select();
+      }
         
-      if (!updateErr && updatedData && updatedData.length > 0) {
-        student = updatedData[0];
+      if (!updateRes.error && updateRes.data && updateRes.data.length > 0) {
+        student = updateRes.data[0];
       }
     }
 

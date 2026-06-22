@@ -171,11 +171,27 @@
                 studentPayload.auth_user_id = user.id;
               }
 
-              const { data: insertedStudent, error: insertError } = await supabase
+              let insertRes = await supabase
                 .from('students')
                 .insert([studentPayload])
-                .select()
-                .single();
+                .select();
+
+              if (insertRes.error && (insertRes.error.code === '42703' || insertRes.error.message.includes('column'))) {
+                console.warn("Fallback student insert failed due to column incompatibilities. Retrying with essential columns...", insertRes.error.message);
+                const essentialPayload = {
+                  full_name: pendingEnrollData.name,
+                  phone: pendingEnrollData.phone,
+                  email: email,
+                  address: pendingEnrollData.address
+                };
+                insertRes = await supabase
+                  .from('students')
+                  .insert([essentialPayload])
+                  .select();
+              }
+
+              const insertedStudent = (insertRes.data && insertRes.data.length > 0) ? insertRes.data[0] : null;
+              const insertError = insertRes.error;
 
               if (!insertError && insertedStudent) {
                 console.log("Successfully inserted student as authenticated user:", insertedStudent);
