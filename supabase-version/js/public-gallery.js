@@ -11,15 +11,15 @@ import { getCurrentLang } from './language.js';
 const fallbackGallery = [
   {
     id: 'gal-1',
-    image_url: 'assets/teal_lehenga.jpg', // Teal Designer Lehenga
+    image_url: '../assets/teal_lehenga.jpg', // Teal Designer Lehenga
     caption_en: 'Premium Teal Hand-Embroidered Lehenga Set',
     caption_pa: 'ਪ੍ਰੀਮੀਅਮ ਨੀਲੀ ਕਢਾਈ ਵਾਲਾ ਡਿਜ਼ਾਈਨਰ ਲਹਿੰਗਾ'
   },
   {
     id: 'gal-2',
-    image_url: 'assets/green_saree.jpg', // Green Floral Saree
+    image_url: '../assets/green_saree.jpg', // Green Floral Saree
     caption_en: 'Elegant Mint-Green Floral Organza Saree',
-    caption_pa: 'ਸੁੰਦਰ ਮਿੰਟ-ਹਰਾ ਫੁੱਲਾਂ ਵਾਲੀ ਓਰਗੈਂਜ਼า ਸਾੜ੍ਹੀ'
+    caption_pa: 'ਸੁੰਦਰ ਮਿੰਟ-ਹਰਾ ਫੁੱਲਾਂ ਵਾਲੀ ਓਰਗੈਂਜ਼ਾ ਸਾੜ੍ਹੀ'
   },
   {
     id: 'gal-3',
@@ -41,7 +41,7 @@ const fallbackGallery = [
   },
   {
     id: 'gal-6',
-    image_url: 'assets/peacock_salwar.jpg', // Peacock embroidered salwar
+    image_url: '../assets/peacock_salwar.jpg', // Peacock embroidered salwar
     caption_en: 'Traditional Peacock Handwork Patiala Salwar Suit',
     caption_pa: 'ਰਵਾਇਤੀ ਮੋਰ ਕਢਾਈ ਪਟਿਆਲਾ ਸਲਵਾਰ ਸੂਟ'
   }

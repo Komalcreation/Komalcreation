@@ -118,18 +118,40 @@
         // FALLBACK: If student is not in the database, they may have hit an RLS/unauthenticated insert block.
         // Let's attempt to insert them now that they are verified/authenticated!
         if (!studentsList || studentsList.length === 0) {
-          console.log("Student not found in database. Checking localStorage for pending details...");
+          console.log("Student not found in database. Checking user metadata and localStorage for pending details...");
           let pendingEnrollData = null;
+
+          // 1. First choice: try to grab from auth user_metadata (highly robust across devices/browsers)
           try {
-            const raw = localStorage.getItem('komal_pending_enrollment');
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              if (parsed.email && parsed.email.toLowerCase().trim() === email.toLowerCase().trim()) {
-                pendingEnrollData = parsed;
-              }
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user && user.user_metadata && user.user_metadata.full_name) {
+              pendingEnrollData = {
+                name: user.user_metadata.full_name,
+                phone: user.user_metadata.phone,
+                address: user.user_metadata.address,
+                courseId: user.user_metadata.course_id,
+                preferredLang: user.user_metadata.preferred_lang || 'pa'
+              };
+              console.log("Retrieved student registration metadata from Supabase user_metadata:", pendingEnrollData);
             }
-          } catch (e) {
-            console.warn("Failed parsing pending enrollment localStorage:", e);
+          } catch (metaErr) {
+            console.warn("Could not fetch registration details from user_metadata:", metaErr);
+          }
+
+          // 2. Second choice fallback: try localstorage
+          if (!pendingEnrollData) {
+            try {
+              const raw = localStorage.getItem('komal_pending_enrollment');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed.email && parsed.email.toLowerCase().trim() === email.toLowerCase().trim()) {
+                  pendingEnrollData = parsed;
+                  console.log("Retrieved student registration metadata from localStorage:", pendingEnrollData);
+                }
+              }
+            } catch (e) {
+              console.warn("Failed parsing pending enrollment localStorage:", e);
+            }
           }
 
           if (pendingEnrollData) {
@@ -182,6 +204,8 @@
             } catch (authErr) {
               console.error("Failed final-chance authorization/insertion:", authErr);
             }
+          } else {
+            console.warn("Could not find pending registration metadata anywhere. Enrollment cannot be completed automatically.");
           }
         } else {
           // If the student already existed, update their course enrollments to active

@@ -70,7 +70,7 @@ header {
 .logo-crest {
   width: 2.75rem;
   height: 2.75rem;
-  background-image: url('../assets/logo.jpg');
+  background-image: url('../../assets/logo.jpg');
   background-size: cover;
   background-position: center;
   background-color: #ffffff;

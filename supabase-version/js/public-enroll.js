@@ -114,7 +114,14 @@ async function handleEnrollmentSubmit(e) {
         password: 'KomalStudentPassword123!',
         options: {
           emailRedirectTo: verifyRedirectUrl,
-          redirectTo: verifyRedirectUrl
+          redirectTo: verifyRedirectUrl,
+          data: {
+            full_name: name,
+            phone: phone,
+            address: address,
+            course_id: courseId,
+            preferred_lang: preferredLang
+          }
         }
       });
       if (signUpError) {
