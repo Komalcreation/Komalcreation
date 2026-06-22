@@ -110,16 +110,85 @@
         }
 
         // Fetch student ID from email to update enrollments
-        const { data: studentsList } = await supabase
+        let { data: studentsList } = await supabase
           .from('students')
           .select('id')
           .eq('email', email);
 
-        if (studentsList && studentsList.length > 0) {
+        // FALLBACK: If student is not in the database, they may have hit an RLS/unauthenticated insert block.
+        // Let's attempt to insert them now that they are verified/authenticated!
+        if (!studentsList || studentsList.length === 0) {
+          console.log("Student not found in database. Checking localStorage for pending details...");
+          let pendingEnrollData = null;
+          try {
+            const raw = localStorage.getItem('komal_pending_enrollment');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed.email && parsed.email.toLowerCase().trim() === email.toLowerCase().trim()) {
+                pendingEnrollData = parsed;
+              }
+            }
+          } catch (e) {
+            console.warn("Failed parsing pending enrollment localStorage:", e);
+          }
+
+          if (pendingEnrollData) {
+            console.log("Found pending enrollment details. Re-attempting student insertion as authenticated user...");
+            try {
+              const { data: { user } } = await supabase.auth.getUser();
+              
+              const studentPayload = {
+                full_name: pendingEnrollData.name,
+                phone: pendingEnrollData.phone,
+                email: email,
+                address: pendingEnrollData.address,
+                email_verified: true,
+                verification_status: 'verified'
+              };
+              if (user) {
+                studentPayload.auth_user_id = user.id;
+              }
+
+              const { data: insertedStudent, error: insertError } = await supabase
+                .from('students')
+                .insert([studentPayload])
+                .select()
+                .single();
+
+              if (!insertError && insertedStudent) {
+                console.log("Successfully inserted student as authenticated user:", insertedStudent);
+                studentsList = [insertedStudent];
+                
+                // Insert enrollment record
+                const { error: enrollError } = await supabase
+                  .from('enrollments')
+                  .insert([
+                    {
+                      student_id: insertedStudent.id,
+                      course_id: pendingEnrollData.courseId,
+                      fee_status: 'pending',
+                      course_status: 'active',
+                      started_at: new Date().toISOString().split('T')[0]
+                    }
+                  ]);
+                if (enrollError) {
+                  console.error("Inserting enrollment failed in verification page:", enrollError.message);
+                } else {
+                  console.log("Successfully inserted enrollment record.");
+                }
+              } else {
+                console.error("Failed final-chance student insertion:", insertError ? insertError.message : "unknown");
+              }
+            } catch (authErr) {
+              console.error("Failed final-chance authorization/insertion:", authErr);
+            }
+          }
+        } else {
+          // If the student already existed, update their course enrollments to active
           const studentId = studentsList[0].id;
           const { error: enrollError } = await supabase
             .from('enrollments')
-            .update({ status: 'Active', course_status: 'active' })
+            .update({ course_status: 'active' })
             .eq('student_id', studentId);
 
           if (enrollError) {

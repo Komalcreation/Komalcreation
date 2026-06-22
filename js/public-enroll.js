@@ -71,9 +71,40 @@ async function handleEnrollmentSubmit(e) {
   submitBtn.disabled = true;
   submitBtn.innerHTML = 'Signing Up...';
 
+  // Store pending enrollment in localStorage to survive the redirect/email verification loop if anonymous writing is blocked
   try {
-    // 1. Send Supabase Auth signUp to trigger automatic verification email
+    localStorage.setItem('komal_pending_enrollment', JSON.stringify({
+      name,
+      phone,
+      email,
+      address,
+      courseId,
+      preferredLang
+    }));
+  } catch (storeErr) {
+    console.warn("Could not save pending enrollment metadata to localStorage:", storeErr);
+  }
+
+  try {
+    // 1. Check if student already exists in Supabase by email
+    let student = null;
     let authUser = null;
+    
+    try {
+      const { data: existingStudents, error: findError } = await supabase
+        .from('students')
+        .select('*')
+        .eq('email', email);
+      
+      if (!findError && existingStudents && existingStudents.length > 0) {
+        student = existingStudents[0];
+        console.log("Found existing student record with email:", email);
+      }
+    } catch (findErr) {
+      console.warn("Error checking for existing student:", findErr);
+    }
+
+    // 2. Send Supabase Auth signUp to trigger automatic verification email
     try {
       const baseHref = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
       const verifyRedirectUrl = `${baseHref}/verify.html?email=${encodeURIComponent(email)}`;
@@ -95,26 +126,65 @@ async function handleEnrollmentSubmit(e) {
       console.warn("Auth signup failed or skipped:", authErr);
     }
 
-    // 2. Insert student record into Supabase
-    const { data: student, error: studentError } = await supabase
-      .from('students')
-      .insert([
-        {
-          full_name: name,
-          phone: phone,
-          email: email,
-          address: address,
-          email_verified: false,
-          verification_status: 'pending',
-          auth_user_id: authUser ? authUser.id : null
+    // 3. Insert student record into Supabase if they don't already exist
+    if (!student) {
+      const studentPayload = {
+        full_name: name,
+        phone: phone,
+        email: email,
+        address: address,
+        email_verified: false,
+        verification_status: 'pending'
+      };
+      
+      if (authUser && authUser.id) {
+        studentPayload.auth_user_id = authUser.id;
+      }
+
+      const { data: insertedStudent, error: studentError } = await supabase
+        .from('students')
+        .insert([studentPayload])
+        .select()
+        .single();
+
+      if (studentError) {
+        console.error("Inserting new student row failed:", studentError);
+        // Fallback trace to query again in case of race condition or custom backend triggers
+        const { data: retryList } = await supabase
+          .from('students')
+          .select('*')
+          .eq('email', email);
+        if (retryList && retryList.length > 0) {
+          student = retryList[0];
+        } else {
+          throw studentError;
         }
-      ])
-      .select()
-      .single();
+      } else {
+        student = insertedStudent;
+      }
+    } else {
+      // If student existed, update their details with the newly submitted values and link user ID if newly grabbed
+      const updatePayload = {
+        full_name: name,
+        phone: phone,
+        address: address
+      };
+      if (authUser && authUser.id) {
+        updatePayload.auth_user_id = authUser.id;
+      }
+      
+      const { data: updatedData, error: updateErr } = await supabase
+        .from('students')
+        .update(updatePayload)
+        .eq('id', student.id)
+        .select();
+        
+      if (!updateErr && updatedData && updatedData.length > 0) {
+        student = updatedData[0];
+      }
+    }
 
-    if (studentError) throw studentError;
-
-    // 3. Insert enrollment record into Supabase
+    // 4. Insert enrollment record into Supabase
     const { error: enrollError } = await supabase
       .from('enrollments')
       .insert([
@@ -127,9 +197,12 @@ async function handleEnrollmentSubmit(e) {
         }
       ]);
 
-    if (enrollError) throw enrollError;
+    if (enrollError) {
+      console.error("Inserting enrollment record failed:", enrollError);
+      throw enrollError;
+    }
 
-    // 4. Synchronize with local server file-database
+    // 5. Synchronize with local server file-database
     try {
       await fetch('/api/public/enroll', {
         method: 'POST',
@@ -157,7 +230,7 @@ async function handleEnrollmentSubmit(e) {
     // Reset Form fields
     $('#enroll-form').reset();
   } catch (err) {
-    console.error("Supabase sequential insertion failed: ", err.message);
+    console.error("Supabase sequential insertion failed detailed log: ", err);
     
     // Fallback Mock simulation for presentation
     showToast(
